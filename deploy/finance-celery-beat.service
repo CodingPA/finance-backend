@@ -1,0 +1,18 @@
+[Unit]
+Description=finance-backend Celery beat (scheduled jobs)
+After=network.target
+
+# Replace `deployer` and /home/deployer/finance-backend below with the
+# user and path you actually deployed to (docs/deployment.md).
+[Service]
+Type=simple
+User=deployer
+Group=deployer
+WorkingDirectory=/home/deployer/finance-backend
+EnvironmentFile=/home/deployer/finance-backend/.env
+ExecStart=/home/deployer/finance-backend/.venv/bin/celery -A core beat --loglevel=info
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

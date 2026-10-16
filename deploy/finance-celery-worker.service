@@ -1,0 +1,24 @@
+[Unit]
+Description=finance-backend Celery worker
+After=network.target
+
+# Replace `deployer` and /home/deployer/finance-backend below with the
+# user and path you actually deployed to (docs/deployment.md).
+[Service]
+Type=simple
+User=deployer
+Group=deployer
+WorkingDirectory=/home/deployer/finance-backend
+EnvironmentFile=/home/deployer/finance-backend/.env
+# --autoscale=max,min: Celery's prefork pool spawns child worker processes
+# on demand as the queue backs up (up to 8) and lets them die back down to
+# 1 when idle -- this is the Linux equivalent of the --pool=solo
+# constraint in local dev (Windows has no fork()), and answers "keep a
+# worker available without manually managing capacity." Raise the max if
+# AI competitor wake-ups/screening jobs start queuing up under load.
+ExecStart=/home/deployer/finance-backend/.venv/bin/celery -A core worker --autoscale=8,1 --loglevel=info
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

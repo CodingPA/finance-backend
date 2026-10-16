@@ -1,0 +1,12 @@
+{% extends "admin/change_form.html" %}
+{% load static %}
+
+{% block after_field_sets %}
+{{ block.super }}
+{{ default_index_tickers|json_script:"default-index-tickers" }}
+{% endblock %}
+
+{% block admin_change_form_document_ready %}
+{{ block.super }}
+<script src="{% static 'league/admin/competition_index_tickers.js' %}"></script>
+{% endblock %}

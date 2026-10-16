@@ -1,0 +1,130 @@
+# Quickstart for evaluating/developing this project -- Django + Celery
+# worker + Celery beat, Postgres, Redis, all containerized. This is NOT a
+# production topology: no nginx, no TLS, and Weaviate is deliberately left
+# out (it's optional infra even natively -- see .env.example). Production
+# deployment is documented separately in docs/deployment.md and is
+# unaffected by anything in this file.
+#
+# First run:
+#   cp .env.example .env   # fill in whatever API keys you actually have
+#   docker compose up --build
+#
+# The Postgres/Redis connection settings below are fixed to this
+# network's own service names and deliberately override whatever
+# DATABASE_URL/REDIS_* you have in .env -- that file still supplies
+# everything else (API keys, PRICING_PROVIDER, ENABLE_LEAGUE/ENABLE_MEDIA,
+# etc.) unchanged.
+
+x-app: &app
+  build:
+    context: .
+    args:
+      # Read from your shell environment, not .env (build args apply at
+      # image-build time, before the container -- and its env_file --
+      # even exists). Default false, keeping the image small. Set either
+      # to build with that extra, e.g.:
+      #   INSTALL_FILINGS=true INSTALL_MEDIA=true docker compose up --build
+      INSTALL_FILINGS: ${INSTALL_FILINGS:-false}
+      INSTALL_MEDIA: ${INSTALL_MEDIA:-false}
+  env_file:
+    - .env
+  environment:
+    # Only what the container topology actually requires -- these have to
+    # point at Compose's own service names/network, which no value in
+    # .env.example could get right for both this and native dev at once.
+    # DEBUG, ALLOWED_HOSTS, etc. deliberately aren't overridden here: your
+    # .env's own values apply unchanged (DEBUG=true out of the box, same
+    # as .env.example), so this file doesn't quietly prevent you from
+    # testing DEBUG=false or a different ALLOWED_HOSTS under Docker.
+    DATABASE_URL: postgres://finance_backend:finance_backend@db:5432/finance_backend
+    REDIS_HOST: redis
+    REDIS_PORT: "6379"
+    REDIS_USE_TLS: "false"
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      # Dev-only credentials, not read from .env -- this database is
+      # private to the compose network, never exposed, and isn't the
+      # kind of secret worth threading through another layer of config
+      # for a local quickstart.
+      POSTGRES_DB: finance_backend
+      POSTGRES_USER: finance_backend
+      POSTGRES_PASSWORD: finance_backend
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finance_backend"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Runs once and exits -- web/worker/beat all wait for this to actually
+  # FINISH (service_completed_successfully), not just for db/redis to be
+  # reachable. Confirmed live that running `migrate` redundantly from
+  # each service's own startup loses a real race the first time it hits
+  # a brand-new database: multiple containers cold-starting against the
+  # same empty Postgres all see "django_migrations doesn't exist" and
+  # race to create it, and only one wins -- the others crash with a
+  # duplicate-key error on the underlying catalog entry. Doing it here,
+  # once, with everyone else gated on its completion, removes the race
+  # entirely instead of relying on migrate being safely concurrent (it
+  # isn't, for that first cold-start table).
+  migrate:
+    <<: *app
+    command: ["python", "manage.py", "migrate", "--noinput"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    <<: *app
+    ports:
+      - "8001:8001"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *app
+    # --autoscale=8,1 matches deploy/finance-celery-worker.service (the
+    # real production unit) rather than the README's --pool=solo, which
+    # is a Windows-only workaround for the lack of fork() -- irrelevant
+    # inside a Linux container regardless of host OS.
+    command: ["celery", "-A", "core", "worker", "--autoscale=8,1", "--loglevel=info"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  beat:
+    <<: *app
+    command: ["celery", "-A", "core", "beat", "--loglevel=info"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres_data:

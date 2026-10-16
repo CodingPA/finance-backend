@@ -1,0 +1,48 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Read-only GITHUB_TOKEN for every job -- neither job writes to the repo
+# (deploy talks to the server over SSH, not through the GitHub API).
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: python manage.py test --settings=core.settings_test
+
+  deploy:
+    needs: test
+    # Repo check keeps forks from trying to SSH into the maintainer's server.
+    if: github.repository == 'CodingPA/finance-backend' && github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run deploy.sh on server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: deployer
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          # No `fingerprint:` pin -- appleboy/ssh-action's host-key fingerprint
+          # check is broken (verified correct values still report "mismatch";
+          # see upstream appleboy/ssh-action#275, unresolved). Acceptable
+          # tradeoff: authorized_keys on the server forces this key to run
+          # ONLY deploy/deploy.sh (see docs/deployment.md), so even a MITM
+          # on this connection can't get more than that one script to run.
+          script: /home/deployer/finance-backend/deploy/deploy.sh

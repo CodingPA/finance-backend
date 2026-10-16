@@ -1,0 +1,36 @@
+Market Research
+Copyright 2026 George Cann, CodingPA LLC
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not
+use this file except in compliance with the License. You may obtain a copy
+of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+License for the specific language governing permissions and limitations
+under the License.
+
+---
+
+This software is a client for third-party financial data services. It
+contains no market data, no filings, and no credentials of its own.
+
+The Apache License above covers this source code only. It grants no rights
+to any data retrieved through it. Each provider -- Tradier, SteadyAPI,
+Financial Modeling Prep, Polygon, Brave Search, SEC EDGAR, Wikipedia, Reddit -- licenses its own
+data under its own terms, and you must obtain your own credentials and
+comply with those terms. Some restrict redistribution or commercial use.
+See "Data sources and their terms" in README.md.
+
+NOT INVESTMENT ADVICE. PAPER TRADING ONLY.
+
+This software is for research and education only. The paper trading league
+simulates trades against live market prices; it places no real orders,
+connects to no brokerage execution venue, and holds no real positions or
+money. Nothing produced by this software or by the AI agents it runs is
+investment advice, a recommendation to buy or sell any security, or a
+solicitation. The software is provided "as is", without warranty of any
+kind, as set out in the License above.

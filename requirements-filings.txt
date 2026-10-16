@@ -1,0 +1,46 @@
+# Optional: SEC filing ingestion (parse + chunk EDGAR HTML for semantic
+# search) -- companies/services/filing_ingestion.py. Its docling imports
+# are deferred to inside
+# ingest_filing() itself, never at module load, so skipping this file is
+# safe: every other feature in this project works unchanged, you just
+# can't actually ingest a filing (assistant/tools.py's
+# propose_filing_ingestion tool raises ModuleNotFoundError if called
+# without this installed -- there's no separate feature flag for this
+# one, since the deferred import already makes an unconfigured
+# deployment cost nothing).
+#
+# Install alongside requirements.txt, not instead of it:
+#   pip install -r requirements.txt -r requirements-filings.txt
+#
+# torch (pulled in below) resolves to a GPU build by default, pulling
+# several GB of unused nvidia-*/CUDA packages on a machine with no GPU.
+# Installing a CPU-only build FIRST satisfies that dependency before this
+# file gets a chance to pull the GPU one -- confirmed live (docs/
+# deployment.md's native setup), drops the install by ~4GB with no
+# functional difference. The Dockerfile does this automatically when
+# built with INSTALL_FILINGS=true; installing this file directly (native
+# setup, no Docker), do it yourself first:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r requirements.txt -r requirements-filings.txt
+# GPU acceleration itself isn't supported by anything in this repo (no
+# Docker Compose device reservation, no assumption of nvidia-container-
+# toolkit) -- a deliberate scope call given the actual workload here
+# (occasional filing parsing, not high-throughput ML inference), not an
+# oversight.
+
+# `docling` itself is a meta-package that always pulls the full torch/OCR/
+# PDF stack via its "standard" extra with no way to slim it --
+# document_converter.py imports every backend (PDF, DOCX, ASR, video)
+# unconditionally at module level, so there's no partial-install path
+# once you use the public DocumentConverter API. Installed directly via
+# docling-slim (the real package `docling` just pins) to make that
+# explicit rather than hiding it behind the meta-package name. ~1.2GB
+# installed, almost all of it torch -- this is the entire reason this
+# is a separate file rather than living in requirements.txt.
+docling-slim[standard]==2.115.0
+# companies/services/edgar_html.py's iXBRL-unwrap pass, used only by
+# filing_ingestion.py -- already pulled in transitively by docling,
+# pinned explicitly since it's imported directly too, not just relied
+# on via Docling's own internals.
+beautifulsoup4==4.15.0
+lxml==6.1.1

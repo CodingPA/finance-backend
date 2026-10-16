@@ -1,0 +1,12 @@
+# Optional: the media app (mp3/mp4 upload -> S3 storage, ffmpeg audio
+# extraction, gpt-4o-transcribe-diarize transcription) -- gated behind
+# ENABLE_MEDIA (core/settings.py, .env.example). The app itself isn't in
+# INSTALLED_APPS at all when that flag is off, so skip this file too in
+# that case; nothing else in this project needs django-storages. Also
+# needs the ffmpeg/ffprobe system binaries, which aren't a pip package --
+# see media/services/ffmpeg.py for how they're located, and the
+# Dockerfile for how the image installs them.
+#
+# Install alongside requirements.txt, not instead of it:
+#   pip install -r requirements.txt -r requirements-media.txt
+django-storages[s3]==1.14.6

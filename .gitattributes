@@ -1,0 +1,11 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Shell scripts specifically: force LF in the working tree on every
+# platform, not just in the stored blob. `text=auto` alone still checks
+# these out as CRLF on Windows, which breaks their shebang line the
+# moment they're actually executed (in a Linux container, or via WSL/
+# Git Bash) with a "bad interpreter" error. This repo is authored on
+# Windows (deploy.sh's own comment already flags the related
+# executable-bit gotcha), so this isn't hypothetical.
+*.sh text eol=lf
