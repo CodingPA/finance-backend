@@ -2,11 +2,19 @@
 unchanged, then swaps the handful of things that make the suite depend on
 live infrastructure or real credentials it has no business needing.
 
-Two, and only two, actual problems on a clean clone (no .env filled in,
-no Redis running), confirmed by running the suite that way and tracing
-each failure to its source rather than guessing:
+Three actual problems on a clean clone (no .env filled in, no Redis
+running), confirmed by running the suite that way and tracing each
+failure to its source rather than guessing:
 
-1. league/services/valuation.py is the ONLY module in this codebase that
+1. settings.py refuses to import with DEBUG off (its default) and no
+   SECRET_KEY -- which is exactly CI, or any clone without a .env. A
+   dummy key is put in the environment BEFORE importing settings.py,
+   since that check runs at import time, before anything below could
+   override it. Unconditional for the same reason as the API keys in 3.
+   (python-dotenv never overrides a variable that's already set, so a
+   developer's real .env key doesn't leak into test runs either.)
+
+2. league/services/valuation.py is the ONLY module in this codebase that
    imports Django's cache framework (`from django.core.cache import
    cache`) -- its get_stock_quote() remembers which SteadyAPI asset class
    a ticker resolves to. With CACHES pointed at a real Redis server (the
@@ -28,7 +36,7 @@ each failure to its source rather than guessing:
    test added without that same care doesn't reintroduce this class of
    failure.
 
-2. Four settings are checked with a hard `raise RuntimeError(...)` before
+3. Four settings are checked with a hard `raise RuntimeError(...)` before
    ever reaching the (correctly mocked) SDK call the test actually cares
    about: GEMINI_API_KEY (league/services/llm_gemini.py),
    OPENAI_API_KEY (league/services/llm_openai.py), ANTHROPIC_API_KEY
@@ -49,7 +57,11 @@ as settings.py, same SQLite-by-default fallback. Use with:
     manage.py test --settings=core.settings_test
 """
 
-from .settings import *  # noqa: F401,F403
+import os
+
+os.environ["SECRET_KEY"] = "test-only-insecure-key-not-a-real-secret"
+
+from .settings import *  # noqa: E402,F401,F403
 
 CACHES = {
     "default": {

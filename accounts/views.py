@@ -5,6 +5,7 @@ from google.oauth2 import id_token as google_id_token
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -41,6 +42,8 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth"
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -63,6 +66,8 @@ class LoginSerializer(TokenObtainPairSerializer):
 class LoginView(TokenObtainPairView):
     serializer_class = LoginSerializer
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth"
 
 
 class GoogleAuthView(APIView):
@@ -70,9 +75,13 @@ class GoogleAuthView(APIView):
     here. We verify it was actually issued by Google for this app, then find
     or create the matching user. Matches by google_sub first (stable across
     email changes), falling back to email (links a Google login to an
-    existing email/password account with the same address)."""
+    existing email/password account with the same address, but only for a
+    Google-verified email, and never over a different Google identity
+    already linked to that account)."""
 
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth"
 
     def post(self, request):
         serializer = GoogleAuthSerializer(data=request.data)
@@ -93,15 +102,19 @@ class GoogleAuthView(APIView):
         email = payload.get("email")
         if not email:
             raise AuthenticationFailed("Google account has no email.")
+        # Matching on email (below) is only safe if Google vouches the
+        # signer actually owns that address -- otherwise an unverified
+        # Google account claiming someone else's email logs in as them.
+        if payload.get("email_verified") not in (True, "true"):
+            raise AuthenticationFailed("Google account email is not verified.")
         name = payload.get("name", "")
 
         user = User.objects.filter(google_sub=sub).first()
         if user is None:
             # Gate NEW account creation only -- an email that already has an
-            # account (email/password or a different Google identity) always
-            # gets linked/logged in below regardless of the allowlist;
-            # removing an AllowedEmail row later must never lock out someone
-            # who already signed up.
+            # account always gets linked/logged in below regardless of the
+            # allowlist; removing an AllowedEmail row later must never lock
+            # out someone who already signed up.
             is_new_email = not User.objects.filter(email=email).exists()
             if is_new_email and not AllowedEmail.objects.filter(email=email.strip().lower()).exists():
                 raise AuthenticationFailed("This email isn't authorized to sign up.")
@@ -109,6 +122,12 @@ class GoogleAuthView(APIView):
             user, created = User.objects.get_or_create(
                 email=email, defaults={"name": name, "google_sub": sub}
             )
+            # Already linked to a DIFFERENT Google identity with the same
+            # email -- e.g. a lapsed custom domain re-registered and its
+            # Google account recreated (new sub, same address). Never hand
+            # that newcomer the existing account.
+            if not created and user.google_sub and user.google_sub != sub:
+                raise AuthenticationFailed("This email is linked to a different Google account.")
             if not created and not user.google_sub:
                 user.google_sub = sub
                 if name and not user.name:

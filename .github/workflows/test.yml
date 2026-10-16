@@ -34,7 +34,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Run deploy.sh on server
-        uses: appleboy/ssh-action@v1
+        # Pinned to a commit, not the movable v1 tag -- this step holds the
+        # deploy key. Bump deliberately.
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2  # v1.2.5
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: deployer

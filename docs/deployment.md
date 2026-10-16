@@ -175,6 +175,13 @@ Fill in, at minimum:
   HTTPS (`deploy/nginx-finance-api.conf` already sends that header;
   without this setting, `request.is_secure()` and secure-cookie behavior
   are wrong even though the browser sees a padlock).
+- Nothing to set for client IPs with nginx on the same box. The per-IP
+  rate limit on login/register/Google sign-in uses the address Uvicorn
+  resolves from nginx's `X-Forwarded-For`, and Uvicorn only trusts that
+  header from `127.0.0.1` by default. If your proxy connects from
+  anywhere else (another host, a load balancer, Docker), set
+  `FORWARDED_ALLOW_IPS=<proxy IP>` in Uvicorn's environment. Without it,
+  every client shares one rate-limit bucket.
 - Every API key from `.env.example` this app actually uses (`FMP_API_KEY`,
   `SEC_CONTACT_EMAIL`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
   `GEMINI_API_KEY`, `STEADY_API_TOKEN`, `GOOGLE_OAUTH_CLIENT_ID`, etc.)
