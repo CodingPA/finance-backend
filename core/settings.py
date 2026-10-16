@@ -26,11 +26,14 @@ def env_list(name: str, default: list[str]) -> list[str]:
     return [item.strip() for item in val.split(",") if item.strip()] if val else default
 
 
-DEBUG = env_bool("DEBUG", True)
+# Off unless explicitly turned on -- a deployment that forgets to set it
+# gets production behavior (no debug pages, no fallback SECRET_KEY below),
+# not a debug server. .env.example sets DEBUG=true for local dev.
+DEBUG = env_bool("DEBUG", False)
 
 # SECURITY WARNING: keep the secret key used in production secret!
-# Falls back to a dev-only key so `manage.py runserver` works out of the box
-# -- but only while DEBUG is true. The old version of this fallback applied
+# Falls back to a dev-only key for local dev -- but only while DEBUG is
+# true (as set in .env.example). The old version of this fallback applied
 # unconditionally, including with DEBUG=False, which is exactly the insecure
 # default a cloned-and-deployed public repo would silently inherit. Outside
 # local dev, a missing SECRET_KEY is now a hard error instead of a shared key.
@@ -205,6 +208,20 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
+    # Applied per-view (accounts/views.py: register, login, Google sign-in)
+    # via ScopedRateThrottle, not globally -- caps password guessing and
+    # sign-up spam per client IP. Counts live in CACHES (Redis).
+    "DEFAULT_THROTTLE_RATES": {
+        "auth": "10/min",
+    },
+    # Identify clients by REMOTE_ADDR, never by trusting X-Forwarded-For
+    # directly (DRF's default with NUM_PROXIES unset uses the whole header,
+    # which a client can vary per request to dodge the throttle). Behind
+    # nginx this is still the real client IP: uvicorn's proxy-headers
+    # handling already rewrites REMOTE_ADDR from nginx's X-Forwarded-For,
+    # taking the right-most hop it doesn't trust (FORWARDED_ALLOW_IPS,
+    # default 127.0.0.1).
+    "NUM_PROXIES": 0,
 }
 
 SIMPLE_JWT = {

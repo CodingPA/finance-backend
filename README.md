@@ -19,6 +19,7 @@ This platform is engineered strictly as a **Single-Tenant / Private Research Too
 If you choose to self-host this application, you must adhere to the following rules to protect your API keys and remain compliant with data provider terms:
 
 * **DO NOT Open Public Registration:** The admin panel requires manual email whitelisting for a reason. Keep registration restricted exclusively to your own account.
+* **Every Allowlisted Account Is an Operator:** There are no roles beyond Django admin. Anyone you add to the allowlist can create competitions, add AI competitors (with their own system prompts) to any competition, trigger AI wake-ups on *any* AI competitor -- each one a real LLM call billed to your API keys -- force live market-data refreshes, and see every competitor's owner email. Only allowlist people you'd trust with your API budget.
 * **Data Redistribution Risk:** If you connect a live Tradier API token and allow unauthenticated or public users to view saved market data, charts, or AI agent price logs, **you are violating Tradier's Terms of Service regarding data redistribution.**
 * **API Key Exposure:** Opening this application to the public with your personal Tradier keys active exposes your account to unauthorized use, rate-limiting blocks, or potential financial liabilities if live endpoints are targeted.
 

@@ -110,6 +110,15 @@ rather than creating a second account. Both sign-in methods work for that
 user going forward. There's no "this email is already registered, please
 sign in differently" error to handle — it just works.
 
+Two limits on that, both `401`:
+- Google must report the email as verified (`email_verified` in the ID
+  token). Otherwise anyone could create a Google account claiming someone
+  else's address and sign in as them.
+- Once an account is linked to one Google identity, a *different* Google
+  identity with the same email is refused rather than logged in. This
+  covers, for example, a lapsed custom domain whose Google account was
+  recreated by someone else.
+
 ## Storing tokens
 
 The backend returns both tokens in the JSON response body (no cookies are
@@ -200,6 +209,10 @@ within its remaining lifetime.
 - `401` from `google/` for any other reason — Google sign-in failed or is
   misconfigured; show a generic "Google sign-in isn't working right now"
   and let the user fall back to email/password.
+- `429` from `register/`, `login/` or `google/` — too many attempts from
+  this IP (the three share one limit, 10 per minute). Show "too many
+  attempts, try again shortly"; the `Retry-After` header says how many
+  seconds to wait.
 - `401` from `token/refresh/` — the session is over. Clear stored tokens and
   redirect to login. Don't retry.
 - `401` from any other authenticated endpoint after the auto-refresh retry

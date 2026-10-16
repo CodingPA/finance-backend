@@ -24,6 +24,9 @@ method/path/body reference.
   message strings, e.g. `{"email": ["user with this email already exists."]}`.
 - Auth failures (missing/invalid/expired token, bad credentials) are `401`
   with a `detail` string, sometimes a `code`.
+- `register/`, `login/` and `google/` share a per-IP rate limit of 10
+  requests per minute. Over it they return `429` with a `Retry-After`
+  header (seconds).
 - User IDs are UUIDs (strings), not integers.
 
 ---
@@ -63,7 +66,8 @@ listing the specific reasons.
 
 **Errors:** `400` — email already registered, email not on the sign-up
 allowlist (`{"email": ["This email isn't on the sign-up allowlist."]}`), or
-password fails validation.
+password fails validation. `429` — too many attempts from this IP (see
+Conventions).
 
 ---
 
@@ -82,7 +86,8 @@ Email + password login.
 
 **Errors:** `401` — `{"detail": "No active account found with the given credentials"}`.
 Same message for "no such user" and "wrong password" — don't use this to
-distinguish the two in the UI.
+distinguish the two in the UI. `429` — too many attempts from this IP (see
+Conventions).
 
 ---
 
@@ -114,6 +119,11 @@ step).
   Google to an already-existing email/password account, always succeeds
   regardless of the allowlist — removing an `AllowedEmail` row never locks
   out someone who already has an account.
+- `401` — `{"detail": "Google account email is not verified."}` — Google
+  didn't mark the token's email as verified. Never linked or created.
+- `401` — `{"detail": "This email is linked to a different Google account."}`
+  — the email's account is already linked to another Google identity.
+- `429` — too many auth attempts from this IP (see Conventions).
 
 A Google login with an email that already has an email/password account
 links to that same account (matched by email) rather than creating a

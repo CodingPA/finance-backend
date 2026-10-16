@@ -77,7 +77,13 @@ RUN pip install --no-cache-dir --upgrade pip && \
     fi && \
     if [ "$INSTALL_MEDIA" = "true" ]; then pip install --no-cache-dir -r requirements-media.txt; fi
 
-COPY . .
+# Run as an unprivileged user, not root. /app itself is chowned too, not
+# just what COPY --chown writes into it: beat writes celerybeat-schedule
+# into the working directory, and the local-disk upload fallback
+# (MEDIA_ROOT, core/settings.py) creates /app/uploads.
+RUN useradd --create-home --shell /usr/sbin/nologin app && chown app:app /app
+COPY --chown=app:app . .
+USER app
 
 # 8001 to match the port the README/docs already use for local (non-
 # Docker) uvicorn -- one fewer thing to remember when moving between the
