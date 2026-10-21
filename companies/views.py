@@ -528,8 +528,11 @@ class SubredditListView(APIView):
             raise ValidationError({"name": ["This field is required."]})
         try:
             watch, _ = TrackedSubreddit.objects.get_or_create(user=request.user, name=name)
-        except IntegrityError as exc:
-            raise ValidationError(str(exc))
+        except IntegrityError:
+            # get_or_create only loses a race to a concurrent request adding
+            # the same name (unique_user_subreddit). The raw IntegrityError
+            # text names DB internals, so don't echo it back.
+            raise ValidationError({"name": [f"r/{name} is already on your watch list."]})
         return Response(_subreddit_row(watch), status=status.HTTP_201_CREATED)
 
 

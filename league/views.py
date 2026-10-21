@@ -556,8 +556,11 @@ class CompetitionListCreateView(APIView):
                 start_date=start_date,
                 end_date=end_date,
             )
-        except (InvalidOperation, IntegrityError) as exc:
-            raise ValidationError(str(exc))
+        except InvalidOperation:
+            raise ValidationError("starting_capital, max_position_pct, max_index_pct and cash_apy must be numbers.")
+        except IntegrityError:
+            # The raw IntegrityError text names DB internals, so don't echo it back.
+            raise ValidationError("Couldn't create the competition -- check the values and try again.")
         create_default_forced_checkins(competition)
         return Response(_competition_row(competition), status=status.HTTP_201_CREATED)
 

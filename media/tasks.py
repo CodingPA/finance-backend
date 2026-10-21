@@ -1,3 +1,4 @@
+import logging
 import os
 import tempfile
 
@@ -9,6 +10,13 @@ from realtime.utils import send_to_user
 
 from .models import MediaFile, MediaSegment
 from .services import ffmpeg, pipeline, vector_store
+
+logger = logging.getLogger(__name__)
+
+# What the user sees when processing fails. The real exception (ffmpeg
+# stderr with server paths, provider API errors) goes to the worker log
+# instead of the API response.
+PROCESSING_FAILED_MESSAGE = "Processing failed -- check the Celery worker log for details."
 
 
 @shared_task
@@ -63,12 +71,13 @@ def process_media_file(media_file_id):
                 vector_store.upsert_segment(segment, vector)
             created.append(segment)
 
-    except Exception as exc:
+    except Exception:
+        logger.exception("process_media_file: failed for MediaFile %s", media_file.id)
         media_file.status = MediaFile.STATUS_FAILED
-        media_file.error_message = str(exc)
+        media_file.error_message = PROCESSING_FAILED_MESSAGE
         media_file.save(update_fields=["status", "error_message"])
         send_to_user(
-            media_file.user_id, "media.failed", media_file_id=media_file.id, message=str(exc)
+            media_file.user_id, "media.failed", media_file_id=media_file.id, message=PROCESSING_FAILED_MESSAGE
         )
         return
 
