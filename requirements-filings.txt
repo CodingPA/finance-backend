@@ -37,7 +37,7 @@
 # explicit rather than hiding it behind the meta-package name. ~1.2GB
 # installed, almost all of it torch -- this is the entire reason this
 # is a separate file rather than living in requirements.txt.
-docling-slim[standard]==2.115.0
+docling-slim[standard]==2.132.0
 # companies/services/edgar_html.py's iXBRL-unwrap pass, used only by
 # filing_ingestion.py -- already pulled in transitively by docling,
 # pinned explicitly since it's imported directly too, not just relied
