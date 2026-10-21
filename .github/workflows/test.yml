@@ -31,6 +31,9 @@ jobs:
     needs: test
     # Repo check keeps forks from trying to SSH into the maintainer's server.
     if: github.repository == 'CodingPA/finance-backend' && github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # DEPLOY_HOST and DEPLOY_SSH_KEY live in this environment, which only
+    # main may deploy from -- a workflow on any other branch can't read them.
+    environment: production
     runs-on: ubuntu-latest
     steps:
       - name: Run deploy.sh on server
