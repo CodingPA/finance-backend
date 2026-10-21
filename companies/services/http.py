@@ -3,12 +3,18 @@ and audit logging (ApiCallLog), ported from scripts/explore_sec_api.py's
 _get() but writing through the Django ORM instead of a standalone SQLite
 cache."""
 
+import re
 import time
 
 import requests
 from django.conf import settings
 
 from companies.models import ApiCallLog, Company
+
+# FMP (apikey=) and Polygon (apiKey=) authenticate with a query parameter,
+# so the key is part of the URL -- and requests quotes the URL in its
+# exception messages. Masked before a URL is logged or an error escapes.
+_SECRET_QUERY_PARAM = re.compile(r"(?<!\w)(api_?key|access_token|token)=[^&#\s'\")]+", re.IGNORECASE)
 
 APP_VERSION = "0.1"
 
@@ -70,11 +76,14 @@ def get(
     if elapsed < min_interval:
         time.sleep(min_interval - elapsed)
 
-    resp = requests.get(url, headers=headers or {"User-Agent": user_agent()}, timeout=30)
+    try:
+        resp = requests.get(url, headers=headers or {"User-Agent": user_agent()}, timeout=30)
+    except requests.RequestException as exc:
+        raise _redacted(exc) from None
     _last_request_time[provider] = time.monotonic()
 
     ApiCallLog.objects.create(
-        url=url,
+        url=redact_url(url),
         endpoint_type=endpoint_type,
         provider=provider,
         ticker=ticker,
@@ -83,8 +92,23 @@ def get(
         status_code=resp.status_code,
         from_cache=False,
     )
-    resp.raise_for_status()
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError as exc:
+        raise _redacted(exc) from None
     return resp
+
+
+def redact_url(text: str) -> str:
+    """`text` with the value of every key/token query parameter replaced by ***."""
+    return _SECRET_QUERY_PARAM.sub(r"\1=***", text)
+
+
+def _redacted(exc: requests.RequestException) -> requests.RequestException:
+    """Same exception type, response and request, with any key in the
+    message masked. Callers raise it `from None` so the original, unmasked
+    message doesn't ride along in the traceback either."""
+    return type(exc)(redact_url(str(exc)), response=exc.response, request=exc.request)
 
 
 def log_cache_hit(endpoint_type: str, *, provider: str = "sec", ticker=None, company=None, tag=None) -> None:

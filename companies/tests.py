@@ -1,7 +1,10 @@
+import importlib
 from datetime import date, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import requests
+from django.apps import apps
 from django.db import IntegrityError
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -9,8 +12,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import User
 
-from .models import Company, CompanySnapshot, ResearchClip, SubredditMention, TrackedCompany, TrackedSubreddit
-from .services import brave_search, fmp, pricing, reddit_tickers, sec_edgar, steady, technicals, tradier, xbrl_tag_mapping
+from .models import ApiCallLog, Company, CompanySnapshot, ResearchClip, SubredditMention, TrackedCompany, TrackedSubreddit
+from .services import brave_search, fmp, http, pricing, reddit_tickers, sec_edgar, steady, technicals, tradier, xbrl_tag_mapping
 from .services.presentation import annual_values, build_report, latest_entry
 from .services.screening import REVENUE_TAGS, run_screen
 from .tasks import refresh_tracked_subreddit, scan_reddit_for_tracked_tickers, scan_tracked_subreddits
@@ -448,6 +451,68 @@ class SubredditEndpointTests(TestCase):
         watch = TrackedSubreddit.objects.create(user=other_user, name="wallstreetbets")
         response = self.client.delete(f"/api/companies/subreddits/{watch.id}/")
         self.assertEqual(response.status_code, 404)
+
+
+class HttpKeyRedactionTests(TestCase):
+    """companies.services.http.get() must never let an FMP/Polygon key --
+    which rides in the query string -- out through an exception message or
+    the ApiCallLog row."""
+
+    URL = "https://financialmodelingprep.com/stable/profile?symbol=AAPL&apikey=SECRETKEY123"
+
+    def _get(self):
+        return http.get(self.URL, "profile", provider="fmp", headers={"User-Agent": "test"}, ticker="AAPL")
+
+    def test_http_error_masks_the_key_and_keeps_the_response(self):
+        resp = requests.Response()
+        resp.status_code = 402
+        resp.reason = "Payment Required"
+        resp.url = self.URL
+        with patch("companies.services.http.requests.get", return_value=resp), \
+             self.assertRaises(requests.HTTPError) as ctx:
+            self._get()
+        self.assertNotIn("SECRETKEY123", str(ctx.exception))
+        self.assertIn("apikey=***", str(ctx.exception))
+        # fmp.py's plan-not-covered handling reads the status off the response.
+        self.assertEqual(ctx.exception.response.status_code, 402)
+        self.assertTrue(ctx.exception.__suppress_context__)
+
+    def test_connection_error_masks_the_key(self):
+        error = requests.ConnectionError(
+            "HTTPSConnectionPool(host='financialmodelingprep.com', port=443): Max retries exceeded with "
+            "url: /stable/profile?symbol=AAPL&apikey=SECRETKEY123 (Caused by NameResolutionError('...'))"
+        )
+        with patch("companies.services.http.requests.get", side_effect=error), \
+             self.assertRaises(requests.ConnectionError) as ctx:
+            self._get()
+        self.assertNotIn("SECRETKEY123", str(ctx.exception))
+
+    def test_logged_url_is_masked(self):
+        resp = requests.Response()
+        resp.status_code = 200
+        with patch("companies.services.http.requests.get", return_value=resp):
+            self._get()
+        self.assertEqual(
+            ApiCallLog.objects.get().url, "https://financialmodelingprep.com/stable/profile?symbol=AAPL&apikey=***",
+        )
+
+    def test_redact_url_masks_polygon_key_and_leaves_other_params(self):
+        self.assertEqual(
+            http.redact_url("https://api.polygon.io/v3/reference/tickers?cursor=abc&page_token=keep&apiKey=SECRET"),
+            "https://api.polygon.io/v3/reference/tickers?cursor=abc&page_token=keep&apiKey=***",
+        )
+
+    def test_migration_masks_rows_logged_before_the_fix(self):
+        old = ApiCallLog.objects.create(url=self.URL, endpoint_type="profile", provider="fmp", status_code=200)
+        sec = ApiCallLog.objects.create(
+            url="https://data.sec.gov/submissions/CIK0000320193.json", endpoint_type="submissions", status_code=200,
+        )
+        migration = importlib.import_module("companies.migrations.0010_redact_api_keys_in_apicalllog")
+        migration.redact_logged_urls(apps, None)
+        old.refresh_from_db()
+        sec.refresh_from_db()
+        self.assertEqual(old.url, "https://financialmodelingprep.com/stable/profile?symbol=AAPL&apikey=***")
+        self.assertEqual(sec.url, "https://data.sec.gov/submissions/CIK0000320193.json")
 
 
 class QuoteEndpointTests(TestCase):
