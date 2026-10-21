@@ -2,6 +2,7 @@ from datetime import date, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from django.db import IntegrityError
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -425,6 +426,16 @@ class SubredditEndpointTests(TestCase):
     def test_create_missing_name_400s(self):
         response = self.client.post("/api/companies/subreddits/", {})
         self.assertEqual(response.status_code, 400)
+
+    def test_create_race_400s_without_leaking_the_db_error(self):
+        # A concurrent request inserting the same name makes get_or_create
+        # raise IntegrityError -- the response must not echo the DB's text.
+        db_error = IntegrityError('duplicate key value violates unique constraint "unique_user_subreddit"')
+        with patch.object(TrackedSubreddit.objects, "get_or_create", side_effect=db_error):
+            response = self.client.post("/api/companies/subreddits/", {"name": "wallstreetbets"})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"name": ["r/wallstreetbets is already on your watch list."]})
+        self.assertNotIn("unique_user_subreddit", response.content.decode())
 
     def test_delete_removes_subreddit(self):
         watch = TrackedSubreddit.objects.create(user=self.user, name="wallstreetbets")

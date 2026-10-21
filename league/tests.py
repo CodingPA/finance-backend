@@ -3515,6 +3515,20 @@ class ManagementApiTests(TestCase):
         response = self.client.post("/api/league/competitions/", {"name": "No Dates"})
         self.assertEqual(response.status_code, 400)
 
+    def test_create_competition_non_numeric_setting_400s_with_a_readable_error(self):
+        response = self.client.post(
+            "/api/league/competitions/",
+            data=json.dumps({
+                "name": "Bad Capital", "start_date": "2026-08-12", "end_date": "2026-11-04",
+                "starting_capital": "lots",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json(), ["starting_capital, max_position_pct, max_index_pct and cash_apy must be numbers."],
+        )
+
     def test_create_ai_competitor_defaults_model_and_cash(self):
         competition = self._create_competition()
         response = self.client.post(
