@@ -2,7 +2,7 @@ requests==2.34.2
 python-dotenv==1.2.2
 
 Django==6.0.8
-djangorestframework==3.17.2
+djangorestframework==3.18.2
 djangorestframework-simplejwt==5.5.1
 django-cors-headers==4.9.0
 google-auth==2.56.0
